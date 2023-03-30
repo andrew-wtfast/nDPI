@@ -24,42 +24,44 @@
 
 #include "ndpi_api.h"
 
-static void ndpi_int_cod_add_connection(struct ndpi_detection_module_struct *ndpi_struct,
-                                             struct ndpi_flow_struct *flow)
-{
-  ndpi_set_detected_protocol(ndpi_struct, flow, NDPI_PROTOCOL_COD, NDPI_PROTOCOL_UNKNOWN, NDPI_CONFIDENCE_DPI);
+static void ndpi_int_cod_add_connection(struct ndpi_detection_module_struct
+                                        *ndpi_struct,
+                                        struct ndpi_flow_struct *flow) {
+    ndpi_set_detected_protocol(ndpi_struct, flow, NDPI_PROTOCOL_COD,
+                               NDPI_PROTOCOL_UNKNOWN, NDPI_CONFIDENCE_DPI);
 }
 
 static void ndpi_search_cod(struct ndpi_detection_module_struct *ndpi_struct,
-                          struct ndpi_flow_struct *flow)
-{
-  struct ndpi_packet_struct * const packet = &ndpi_struct->packet;
+                            struct ndpi_flow_struct *flow) {
+    struct ndpi_packet_struct *const packet = &ndpi_struct->packet;
 
-  if (flow->packet_counter != 1) {
+    if (flow->packet_counter != 1) {
+        NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
+        return;
+    }
+
+    if (packet->payload_packet_len != 29) {
+        NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
+        return;
+    }
+
+    if (packet->payload[0] == 0x0d && packet->payload[1] == 0x02
+        && packet->payload[2] == 0x00 && packet->payload[17] == 0x0a
+        && packet->payload[18] == 0xff && packet->payload[19] == 0x7f) {
+        ndpi_int_cod_add_connection(ndpi_struct, flow);
+        return;
+    }
+
     NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
-    return;
-  }
-
-  if (packet->payload_packet_len != 29) {
-    NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
-    return;
-  }
-
-  if (packet->payload[0] == 0x0d && packet->payload[1] == 0x02 && packet->payload[2] == 0x00 && packet->payload[17] == 0x0a && packet->payload[18] == 0xff && packet->payload[19] == 0x7f) {
-    ndpi_int_cod_add_connection(ndpi_struct, flow);
-    return;
-  } 
-  
-  NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
 }
 
-void init_cod_dissector(struct ndpi_detection_module_struct *ndpi_struct, u_int32_t *id)
-{
-printf("COD INIT1\n");
-  ndpi_set_bitmask_protocol_detection(
-    "Cod", ndpi_struct, *id,
-    NDPI_PROTOCOL_COD, ndpi_search_cod, NDPI_SELECTION_BITMASK_PROTOCOL_V4_V6_UDP_WITH_PAYLOAD,
-    SAVE_DETECTION_BITMASK_AS_UNKNOWN, ADD_TO_DETECTION_BITMASK);
-  *id += 1;
+void init_cod_dissector(struct ndpi_detection_module_struct *ndpi_struct,
+                        u_int32_t * id) {
+    printf("COD INIT1\n");
+    ndpi_set_bitmask_protocol_detection("Cod", ndpi_struct, *id,
+                                        NDPI_PROTOCOL_COD, ndpi_search_cod,
+                                        NDPI_SELECTION_BITMASK_PROTOCOL_V4_V6_UDP_WITH_PAYLOAD,
+                                        SAVE_DETECTION_BITMASK_AS_UNKNOWN,
+                                        ADD_TO_DETECTION_BITMASK);
+    *id += 1;
 }
-
