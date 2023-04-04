@@ -829,6 +829,10 @@ struct ndpi_flow_udp_struct {
   /* NDPI_PROTOCOL_LINE_CALL */
   u_int8_t line_pkts[2];
   u_int8_t line_base_cnt[2];
+
+  /* NDPI_PROTOCOL_MORTAL_KOMBAT */
+  u_int8_t mortal_kombat_bytes[16];
+
 };
 
 /* ************************************************** */
