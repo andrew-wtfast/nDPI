@@ -239,7 +239,7 @@ void init_merakicloud_dissector(struct ndpi_detection_module_struct *ndpi_struct
 void init_tailscale_dissector(struct ndpi_detection_module_struct *ndpi_struct, u_int32_t *id);
 void init_cod_dissector(struct ndpi_detection_module_struct *ndpi_struct, u_int32_t *id);
 void init_mortal_kombat_dissector(struct ndpi_detection_module_struct *ndpi_struct, u_int32_t *id);
-
+void init_rocket_league_dissector(struct ndpi_detection_module_struct *ndpi_struct, u_int32_t *id);
 /* ndpi_main.c */
 extern u_int32_t ndpi_ip_port_hash_funct(u_int32_t ip, u_int16_t port);
 

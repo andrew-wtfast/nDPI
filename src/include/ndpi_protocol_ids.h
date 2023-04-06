@@ -363,6 +363,7 @@ typedef enum {
   NDPI_PROTOCOL_TPLINK_SHP            = 332, /* TP-LINK Smart Home Protocol */
   NDPI_PROTOCOL_COD                   = 333,
   NDPI_PROTOCOL_MORTAL_KOMBAT         = 334,
+  NDPI_PROTOCOL_ROCKET_LEAGUE         = 335,
 
 #ifdef CUSTOM_NDPI_PROTOCOLS
 #include "../../../nDPI-custom/custom_ndpi_protocol_ids.h"
