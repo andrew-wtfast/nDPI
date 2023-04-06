@@ -237,6 +237,7 @@ void init_tuya_lp_dissector(struct ndpi_detection_module_struct *ndpi_struct, u_
 void init_tplink_shp_dissector(struct ndpi_detection_module_struct *ndpi_struct, u_int32_t *id);
 void init_merakicloud_dissector(struct ndpi_detection_module_struct *ndpi_struct, u_int32_t *id);
 void init_tailscale_dissector(struct ndpi_detection_module_struct *ndpi_struct, u_int32_t *id);
+void init_cod_dissector(struct ndpi_detection_module_struct *ndpi_struct, u_int32_t *id);
 void init_mortal_kombat_dissector(struct ndpi_detection_module_struct *ndpi_struct, u_int32_t *id);
 
 /* ndpi_main.c */
