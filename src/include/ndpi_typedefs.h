@@ -53,6 +53,7 @@ typedef enum {
   ndpi_tzsp_tunnel,
   ndpi_l2tp_tunnel,
   ndpi_vxlan_tunnel,
+  ndpi_gre_tunnel,
 } ndpi_packet_tunnel;
 
 /*
@@ -536,6 +537,41 @@ struct ndpi_vxlanhdr {
   u_int8_t reserved;
 } PACK_OFF;
 
+#ifndef IPPROTO_GRE
+#define IPPROTO_GRE 47
+#endif
+
+#define NDPI_GRE_CSUM        ntohs(0x8000)
+#define NDPI_GRE_ROUTING     ntohs(0x4000)
+#define NDPI_GRE_KEY         ntohs(0x2000)
+#define NDPI_GRE_SEQ         ntohs(0x1000)
+#define NDPI_GRE_STRICT      ntohs(0x0800)
+#define NDPI_GRE_REC         ntohs(0x0700)
+#define NDPI_GRE_ACK         ntohs(0x0080)
+#define NDPI_GRE_FLAGS       ntohs(0x00f8)
+#define NDPI_GRE_VERSION     ntohs(0x0007)
+
+#define NDPI_GRE_IS_CSUM(f)		((f) & NDPI_GRE_CSUM)
+#define NDPI_GRE_IS_ROUTING(f)	((f) & NDPI_GRE_ROUTING)
+#define NDPI_GRE_IS_KEY(f)		((f) & NDPI_GRE_KEY)
+#define NDPI_GRE_IS_SEQ(f)		((f) & NDPI_GRE_SEQ)
+#define NDPI_GRE_IS_STRICT(f)	((f) & NDPI_GRE_STRICT)
+#define NDPI_GRE_IS_REC(f)		((f) & NDPI_GRE_REC)
+#define NDPI_GRE_IS_FLAGS(f)		((f) & NDPI_GRE_FLAGS)
+#define NDPI_GRE_IS_ACK(f)		((f) & NDPI_GRE_ACK)
+#define NDPI_GRE_IS_VERSION_0(f) (((f) & NDPI_GRE_VERSION) == ntohs(0x0000))
+#define NDPI_GRE_IS_VERSION_1(f) (((f) & NDPI_GRE_VERSION) == ntohs(0x0001))
+
+#define NDPI_GRE_PROTO_PPP ntohs(0x880b)
+#define NDPI_PPP_HDRLEN	4	/* octets for standard ppp header */
+
+/* +++++++++++++++++++++++ GRE basic header +++++++++++++++++++++++ */
+PACK_ON
+struct ndpi_gre_basehdr {
+	uint16_t flags;
+	uint16_t protocol;
+} PACK_OFF;
+
 /* ************************************************************ */
 
 /**
@@ -691,9 +727,6 @@ struct ndpi_flow_tcp_struct {
 
   /* NDPI_PROTOCOL_IRC */
   u_int8_t irc_stage;
-
-  /* NDPI_PROTOCOL_H323 */
-  u_int8_t h323_valid_packets;
 
   /* NDPI_PROTOCOL_GNUTELLA */
   u_int8_t gnutella_msg_id[3];
@@ -1543,6 +1576,9 @@ struct ndpi_flow_struct {
   /* All packets even those without payload */
   u_int16_t all_packets_counter;
   u_int16_t packet_direction_complete_counter[2];      // can be 0 - 65000
+
+  /* NDPI_PROTOCOL_H323 */
+  u_int8_t h323_valid_packets;
 
   /* NDPI_PROTOCOL_BITTORRENT */
   u_int8_t bittorrent_stage;		      // can be 0 - 255
