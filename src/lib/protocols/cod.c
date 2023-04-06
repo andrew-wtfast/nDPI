@@ -57,7 +57,6 @@ static void ndpi_search_cod(struct ndpi_detection_module_struct *ndpi_struct,
 
 void init_cod_dissector(struct ndpi_detection_module_struct *ndpi_struct,
                         u_int32_t * id) {
-    printf("COD INIT1\n");
     ndpi_set_bitmask_protocol_detection("Cod", ndpi_struct, *id,
                                         NDPI_PROTOCOL_COD, ndpi_search_cod,
                                         NDPI_SELECTION_BITMASK_PROTOCOL_V4_V6_UDP_WITH_PAYLOAD,

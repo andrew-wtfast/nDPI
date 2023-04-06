@@ -42,7 +42,6 @@ static void ndpi_search_mortal_kombat(struct ndpi_detection_module_struct *ndpi_
 				memcpy(flow->l4.udp.mortal_kombat_bytes, packet->payload + 1, 16);
 				return; // continue inspecting
 			} else {
-				printf("not mortal kombat 1\n");
 				NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
 				return;
 			}
@@ -59,7 +58,6 @@ static void ndpi_search_mortal_kombat(struct ndpi_detection_module_struct *ndpi_
 
 void init_mortal_kombat_dissector(struct ndpi_detection_module_struct
                                   *ndpi_struct, u_int32_t * id) {
-    printf("mortal kombat init\n");
     ndpi_set_bitmask_protocol_detection("MortalKombat", ndpi_struct, *id,
                                         NDPI_PROTOCOL_MORTAL_KOMBAT,
                                         ndpi_search_mortal_kombat,

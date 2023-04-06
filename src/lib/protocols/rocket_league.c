@@ -58,13 +58,11 @@ static void ndpi_search_rocket_league(struct ndpi_detection_module_struct *ndpi_
 
 	// If this is too restrictive increase upper limit
 	if (packet->payload_packet_len < 48 || packet->payload_packet_len > 496) {
-   		printf("not rocket league match 0\n");
 		NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
 		return;
 	}
 
 	if (packet->payload_packet_len < 48) {
-   		printf("not rocket league match 2\n");
 		NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
 		return;
 	}
@@ -73,7 +71,6 @@ static void ndpi_search_rocket_league(struct ndpi_detection_module_struct *ndpi_
 		if (packet->packet_direction == 0 && packet->payload_packet_len == 80) {
 			return; //continue inspecting
 		} else {
-    		printf("not rocket league match 1\n");
 			NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
 			return;
 		}
@@ -83,7 +80,6 @@ static void ndpi_search_rocket_league(struct ndpi_detection_module_struct *ndpi_
 		if (packet->packet_direction == 0 && packet->payload_packet_len == 48) {
 			return; //continue inspecting
 		} else {
-    		printf("not rocket league match 2\n");
 			NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
 			return;
 		}
@@ -96,7 +92,6 @@ static void ndpi_search_rocket_league(struct ndpi_detection_module_struct *ndpi_
 
 void init_rocket_league_dissector(struct ndpi_detection_module_struct
                                   *ndpi_struct, u_int32_t * id) {
-    printf("rocket league init\n");
     ndpi_set_bitmask_protocol_detection("RocketLeague", ndpi_struct, *id,
                                         NDPI_PROTOCOL_ROCKET_LEAGUE,
                                         ndpi_search_rocket_league,
