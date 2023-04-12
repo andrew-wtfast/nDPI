@@ -17,6 +17,8 @@
  *
  */
 
+//#define WTFAST_SERIALIZE
+
 #ifndef WIN32
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -33,6 +35,19 @@
 #include <string.h>
 #include <unistd.h>
 
+#ifdef WTFAST_SERIALIZE
+#include <fcntl.h>
+#endif
+
+#define LOG_FATAL    (1)
+#define LOG_ERR      (2)
+#define LOG_WARN     (3)
+#define LOG_INFO     (4)
+#define LOG_DBG      (5)
+
+static uint8_t Loglevel = LOG_INFO;
+
+#define LOG_PRINTF(level, ...) do {if (level <= Loglevel) {fprintf( stderr, __VA_ARGS__ ); }} while(0 )
 #ifdef WIN32
 #include <windows.h>
 #endif
@@ -45,6 +60,9 @@
 #define IDLE_SCAN_PERIOD 10000 /* msec */
 #define MAX_IDLE_TIME 300000 /* msec */
 #define INITIAL_THREAD_HASH 0x03dd018b
+#ifdef WTFAST_SERIALIZE
+#define PIPE_FILE "/tmp/dpi.io"
+#endif
 
 #ifndef ETH_P_IP
 #define ETH_P_IP 0x0800
@@ -99,6 +117,9 @@ struct nDPI_flow_info {
   uint8_t tls_client_hello_seen:1;
   uint8_t tls_server_hello_seen:1;
   uint8_t flow_info_printed:1;
+#ifdef WTFAST_SERIALIZE
+  uint8_t flow_info_wtfast_json_sent:1;
+#endif
   uint8_t reserved_00:1;
   uint8_t l4_protocol;
 
@@ -106,6 +127,9 @@ struct nDPI_flow_info {
   struct ndpi_proto guessed_protocol;
 
   struct ndpi_flow_struct * ndpi_flow;
+#ifdef WTFAST_SERIALIZE
+	ndpi_serializer ndpi_flow_serializer;
+#endif
 };
 
 struct nDPI_workflow {
@@ -132,6 +156,9 @@ struct nDPI_workflow {
   unsigned long long int total_idle_flows;
 
   struct ndpi_detection_module_struct * ndpi_struct;
+#ifdef WTFAST_SERIALIZE
+	ndpi_serialization_format ndpi_serialization_format;
+#endif
 };
 
 struct nDPI_reader_thread {
@@ -144,6 +171,10 @@ static struct nDPI_reader_thread reader_threads[MAX_READER_THREADS] = {};
 static int reader_thread_count = MAX_READER_THREADS;
 static volatile long int main_thread_shutdown = 0;
 static volatile long int flow_id = 0;
+
+#ifdef WTFAST_SERIALIZE
+int pipe_fd = 0;
+#endif
 
 static void free_workflow(struct nDPI_workflow ** const workflow);
 
@@ -178,14 +209,15 @@ static struct nDPI_workflow * init_workflow(char const * const file_or_device)
   }
 
   if(pcap_compile(workflow->pcap_handle, &bpf_code, bpfFilter, 1, 0xFFFFFF00) < 0) {
-    printf("pcap_compile error: '%s'\n", pcap_geterr(workflow->pcap_handle));
+    LOG_PRINTF(LOG_FATAL, "pcap_compile error: '%s'\n", pcap_geterr(workflow->pcap_handle));
     exit(-1);
   }
 
   bpf_cfilter = &bpf_code;
 
   if(pcap_setfilter(workflow->pcap_handle, bpf_cfilter) < 0) {
-    printf("pcap_setfilter error: '%s'\n", pcap_geterr(workflow->pcap_handle));
+    LOG_PRINTF(LOG_FATAL, "pcap_setfilter error: '%s'\n", pcap_geterr(workflow->pcap_handle));
+    exit(-1);
   }  
 
   ndpi_init_prefs init_prefs = ndpi_no_prefs;
@@ -322,6 +354,55 @@ static int ip_tuple_to_string(struct nDPI_flow_info const * const flow,
 
   return 0;
 }
+
+#ifdef WTFAST_SERIALIZE
+static char* serializeClassifiedFlowData(struct ndpi_detection_module_struct *ndpi_struct,  struct nDPI_flow_info *flow, uint32_t* len)
+{
+	//TODO Currently this func returns the json string directly but sets the
+	//json string length via a parameter.
+	
+	char *json_str = NULL;
+	u_int32_t json_str_len = 0;
+	char src_addr_str[INET6_ADDRSTRLEN + 1] = { 0 };
+	char dst_addr_str[INET6_ADDRSTRLEN + 1] = { 0 };
+	char l4_proto_name[32];
+
+	ndpi_serializer * const serializer = &flow->ndpi_flow_serializer;
+
+	ndpi_serialize_string_string(serializer, "l4_proto", ndpi_get_ip_proto_name(flow->l4_protocol, l4_proto_name, sizeof(l4_proto_name)));
+
+	if (ip_tuple_to_string(flow, src_addr_str, sizeof(src_addr_str), dst_addr_str, sizeof(dst_addr_str)) != 0) {
+		ndpi_serialize_string_string(serializer, "src_ip", src_addr_str);
+		ndpi_serialize_string_string(serializer, "dst_ip", dst_addr_str);
+	}
+
+	if (flow->src_port != 0) {
+		ndpi_serialize_string_uint32(serializer, "src_port", ntohs(flow->src_port));
+	}
+
+	if (flow->dst_port != 0) {
+		ndpi_serialize_string_uint32(serializer, "dst_port", ntohs(flow->dst_port));
+	}
+
+	char buf[64];
+	ndpi_serialize_string_string(serializer, "l7_proto", ndpi_protocol2name(ndpi_struct, flow->detected_l7_protocol, buf, sizeof(buf)));
+	ndpi_serialize_string_string(serializer, "l7_proto_id", ndpi_protocol2id(ndpi_struct, flow->detected_l7_protocol, buf, sizeof(buf)));
+
+	json_str = ndpi_serializer_get_buffer(serializer, &json_str_len);
+
+	if (json_str == NULL || json_str_len == 0)
+	{
+		LOG_PRINTF(LOG_FATAL, "ERROR: nDPI serialization failed\n");
+		exit(-1); //TODO
+	}
+
+	LOG_PRINTF(LOG_DBG, "%.*s\n", (int)json_str_len, json_str);
+
+	*len = json_str_len;
+
+	return json_str;
+}
+#endif
 
 #ifdef VERBOSE
 static void print_packet_info(struct nDPI_reader_thread const * const reader_thread,
@@ -508,9 +589,9 @@ static void check_for_idle_flows(struct nDPI_workflow * const workflow)
 	struct nDPI_flow_info * const f =
 	  (struct nDPI_flow_info *)workflow->ndpi_flows_idle[--workflow->cur_idle_flows];
 	if (f->flow_fin_ack_seen == 1) {
-	  printf("Free fin flow with id %u\n", f->flow_id);
+	  LOG_PRINTF(LOG_DBG, "Free fin flow with id %u\n", f->flow_id);
 	} else {
-	  printf("Free idle flow with id %u\n", f->flow_id);
+	  LOG_PRINTF(LOG_DBG, "Free idle flow with id %u\n", f->flow_id);
 	}
 	ndpi_tdelete(f, &workflow->ndpi_flows_active[idle_scan_index],
 		     ndpi_workflow_node_cmp);
@@ -822,7 +903,7 @@ static void ndpi_process_packet(uint8_t * const args,
     }
     memset(flow_to_process->ndpi_flow, 0, SIZEOF_FLOW_STRUCT);
 
-    printf("[%8llu, %d, %4u] new %sflow\n", workflow->packets_captured, thread_index,
+    LOG_PRINTF(LOG_DBG, "[%8llu, %d, %4u] new %sflow\n", workflow->packets_captured, thread_index,
 	   flow_to_process->flow_id,
 	   (flow_to_process->is_midstream_flow != 0 ? "midstream-" : ""));
     if (ndpi_tsearch(flow_to_process, &workflow->ndpi_flows_active[hashed_index], ndpi_workflow_node_cmp) == NULL) {
@@ -849,7 +930,7 @@ static void ndpi_process_packet(uint8_t * const args,
   /* TCP-FIN: indicates that at least one side wants to end the connection */
   if (flow.flow_fin_ack_seen != 0 && flow_to_process->flow_fin_ack_seen == 0) {
     flow_to_process->flow_fin_ack_seen = 1;
-    printf("[%8llu, %d, %4u] end of flow\n",  workflow->packets_captured, thread_index,
+    LOG_PRINTF(LOG_DBG, "[%8llu, %d, %4u] end of flow\n",  workflow->packets_captured, thread_index,
 	   flow_to_process->flow_id);
     return;
   }
@@ -868,7 +949,7 @@ static void ndpi_process_packet(uint8_t * const args,
 			    flow_to_process->ndpi_flow,
 			    1, &protocol_was_guessed);
     if (protocol_was_guessed != 0) {
-      printf("[%8llu, %d, %4d][GUESSED] protocol: %s | app protocol: %s | category: %s\n",
+      LOG_PRINTF(LOG_DBG, "[%8llu, %d, %4d][GUESSED] protocol: %s | app protocol: %s | category: %s\n",
 	     workflow->packets_captured,
 	     reader_thread->array_index,
 	     flow_to_process->flow_id,
@@ -876,7 +957,7 @@ static void ndpi_process_packet(uint8_t * const args,
 	     ndpi_get_proto_name(workflow->ndpi_struct, flow_to_process->guessed_protocol.app_protocol),
 	     ndpi_category_get_name(workflow->ndpi_struct, flow_to_process->guessed_protocol.category));
     } else {
-      printf("[%8llu, %d, %4d][FLOW NOT CLASSIFIED]\n",
+      LOG_PRINTF(LOG_DBG, "[%8llu, %d, %4d][FLOW NOT CLASSIFIED]\n",
 	     workflow->packets_captured, reader_thread->array_index, flow_to_process->flow_id);
     }
   }
@@ -896,7 +977,7 @@ static void ndpi_process_packet(uint8_t * const args,
         flow_to_process->detection_completed = 1;
         workflow->detected_flow_protocols++;
 
-        printf("[%8llu, %d, %4d][DETECTED] protocol: %s | app protocol: %s | category: %s\n",
+        LOG_PRINTF(LOG_INFO, "[%8llu, %d, %4d][DETECTED] protocol: %s | app protocol: %s | category: %s\n",
 	       workflow->packets_captured,
 	       reader_thread->array_index,
 	       flow_to_process->flow_id,
@@ -904,7 +985,47 @@ static void ndpi_process_packet(uint8_t * const args,
 	       ndpi_get_proto_name(workflow->ndpi_struct, flow_to_process->detected_l7_protocol.app_protocol),
 	       ndpi_category_get_name(workflow->ndpi_struct, flow_to_process->detected_l7_protocol.category));
       }
+
+
     }
+
+#ifdef WTFAST_SERIALIZE
+		if (flow_to_process->detection_completed) {
+			if (!flow_to_process->flow_info_wtfast_json_sent) {
+				flow_to_process->flow_info_wtfast_json_sent = 1; 
+
+				char* json_str = NULL;
+				uint32_t json_str_len = 0;
+
+				if (ndpi_init_serializer(&flow_to_process->ndpi_flow_serializer, ndpi_serialization_format_json) != 0) {
+					fprintf(stderr, "serializer init failed\n");
+					//TODO handle serialization init failure
+				}
+
+				json_str = serializeClassifiedFlowData(workflow->ndpi_struct, flow_to_process, &json_str_len);
+				if (json_str == NULL) {
+					fprintf(stderr, "serializeClassifiedFlowData() failed\n");
+				} else {
+					LOG_PRINTF(LOG_INFO, "BOOGER%s\n", json_str);
+	
+//					int ret;
+//					ret = write(pipe_fd, json_str, json_str_len);
+//					if (ret == -1) {
+//					} else {
+//						fprintf(stderr, "pipe write okay bytes = %d\n", json_str_len);
+//					}
+//					// TODO The reader side expects delimiter '\n'.
+//					// Using NULL was problematic during initial development.
+//					ret = write(pipe_fd, "\n", 1);
+//					if (ret == -1) {
+//						fprintf(stderr, "pipe write failed err= %s\n", strerror(errno));
+//					}
+				}
+
+				ndpi_term_serializer(&flow_to_process->ndpi_flow_serializer);
+			}
+		}
+#endif
 
   if (flow_to_process->ndpi_flow->num_extra_packets_checked <=
       flow_to_process->ndpi_flow->max_extra_packets_to_check)
@@ -926,7 +1047,7 @@ static void ndpi_process_packet(uint8_t * const args,
         char const * const flow_info = ndpi_get_flow_info(flow_to_process->ndpi_flow, &flow_to_process->detected_l7_protocol);
         if (flow_info != NULL)
         {
-          printf("[%8llu, %d, %4d] info: %s\n",
+          LOG_PRINTF(LOG_DBG, "[%8llu, %d, %4d] info: %s\n",
             workflow->packets_captured,
             reader_thread->array_index,
             flow_to_process->flow_id,
@@ -943,7 +1064,7 @@ static void ndpi_process_packet(uint8_t * const args,
             {
 	      uint8_t unknown_tls_version = 0;
 	      char buf_ver[16];
-	      printf("[%8llu, %d, %4d][TLS-CLIENT-HELLO] version: %s | sni: %s | (advertised) ALPNs: %s\n",
+	      LOG_PRINTF(LOG_DBG, "[%8llu, %d, %4d][TLS-CLIENT-HELLO] version: %s | sni: %s | (advertised) ALPNs: %s\n",
 		     workflow->packets_captured,
 		     reader_thread->array_index,
 		     flow_to_process->flow_id,
@@ -953,6 +1074,7 @@ static void ndpi_process_packet(uint8_t * const args,
 		     flow_to_process->ndpi_flow->host_server_name,
 		     (flow_to_process->ndpi_flow->protos.tls_quic.advertised_alpns != NULL ?
 		      flow_to_process->ndpi_flow->protos.tls_quic.advertised_alpns : "-"));
+
 	      flow_to_process->tls_client_hello_seen = 1;
             }
 	  if (flow_to_process->tls_server_hello_seen == 0 &&
@@ -960,7 +1082,7 @@ static void ndpi_process_packet(uint8_t * const args,
             {
 	      uint8_t unknown_tls_version = 0;
 	      char buf_ver[16];
-	      printf("[%8llu, %d, %4d][TLS-SERVER-HELLO] version: %s | common-name(s): %.*s | "
+	      LOG_PRINTF(LOG_DBG, "[%8llu, %d, %4d][TLS-SERVER-HELLO] version: %s | common-name(s): %.*s | "
 		     "issuer: %s | subject: %s\n",
 		     workflow->packets_captured,
 		     reader_thread->array_index,
@@ -976,6 +1098,7 @@ static void ndpi_process_packet(uint8_t * const args,
 		      flow_to_process->ndpi_flow->protos.tls_quic.issuerDN : "-"),
 		     (flow_to_process->ndpi_flow->protos.tls_quic.subjectDN != NULL ?
 		      flow_to_process->ndpi_flow->protos.tls_quic.subjectDN : "-"));
+
 	      flow_to_process->tls_server_hello_seen = 1;
             }
         }
@@ -1011,7 +1134,7 @@ static void * processing_thread(void * const ndpi_thread_arg)
   struct nDPI_reader_thread const * const reader_thread =
     (struct nDPI_reader_thread *)ndpi_thread_arg;
 
-  printf("Starting Thread %d\n", reader_thread->array_index);
+  LOG_PRINTF(LOG_DBG, "Starting Thread %d\n", reader_thread->array_index);
   run_pcap_loop(reader_thread);
   __sync_fetch_and_add(&reader_thread->workflow->error_or_eof, 1);
   return NULL;
@@ -1078,7 +1201,7 @@ static int stop_reader_threads(void)
     break_pcap_loop(&reader_threads[i]);
   }
 
-  printf("------------------------------------ Stopping reader threads\n");
+  LOG_PRINTF(LOG_DBG, "------------------------------------ Stopping reader threads\n");
 
   for (int i = 0; i < reader_thread_count; ++i) {
     if (reader_threads[i].workflow == NULL) {
@@ -1095,7 +1218,7 @@ static int stop_reader_threads(void)
     total_flows_idle += reader_threads[i].workflow->total_idle_flows;
     total_flows_detected += reader_threads[i].workflow->detected_flow_protocols;
 
-    printf("Stopping Thread %d, processed %10llu packets, %12llu bytes, total flows: %8llu, "
+    LOG_PRINTF(LOG_DBG, "Stopping Thread %d, processed %10llu packets, %12llu bytes, total flows: %8llu, "
 	   "idle flows: %8llu, detected flows: %8llu\n",
 	   reader_threads[i].array_index, reader_threads[i].workflow->packets_processed,
 	   reader_threads[i].workflow->total_l4_data_len, reader_threads[i].workflow->total_active_flows,
