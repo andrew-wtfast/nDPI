@@ -111,7 +111,9 @@ struct nDPI_flow_info
 		} u32;
 	} ip_tuple;
 
-	struct ndpi_ethhdr ethernet;
+	struct ndpi_ethhdr ethernet; // record eth hdr of first packet of flow (wtfast)
+	unsigned long long int first_packet; // record which packet caused this flow to be created (wtfast)
+
 	unsigned long long int total_l4_data_len;
 	uint16_t src_port;
 	uint16_t dst_port;
@@ -608,8 +610,9 @@ static void print_flow_classification(struct nDPI_workflow *workflow, struct nDP
 		flow_info->ethernet.h_dest[0],flow_info->ethernet.h_dest[1],flow_info->ethernet.h_dest[2],
 		flow_info->ethernet.h_dest[3],flow_info->ethernet.h_dest[4],flow_info->ethernet.h_dest[5]);
 
-	LOG_PRINTF(LOG_INFO, "Flow ID:\t%d\nClassification:\t%s\nCategory:\t%s\nClient:\t\t%s:%d (MAC %s)\nServer:\t\t%s:%d (MAC %s)\n\n", 
+	LOG_PRINTF(LOG_INFO, "Flow ID:\t\t%d\nStarted on Packet:\t%llu\nClassification:\t\t%s\nCategory:\t\t%s\nClient:\t\t\t%s:%d (MAC %s)\nServer:\t\t\t%s:%d (MAC %s)\n", 
 		flow_info->flow_id,
+		flow_info->first_packet,
 		ndpi_get_proto_name(workflow->ndpi_struct, flow_info->detected_l7_protocol.app_protocol),
 		category,
 		src_addr_str,
@@ -895,6 +898,9 @@ static void ndpi_process_packet(uint8_t * const args, struct pcap_pkthdr const *
 		if (ethernet != NULL) {
 			memcpy(&flow_to_process->ethernet, ethernet, sizeof(struct ndpi_ethhdr));
 		}
+		// Save the packet number of the first packet of the flow. Note that 
+		// arps are not included in the total packet count.
+		flow_to_process->first_packet = workflow->packets_captured;
 
 		LOG_PRINTF(LOG_DBG, "[%8llu, %d, %4u] new %sflow\n", workflow->packets_captured, thread_index, flow_to_process->flow_id, (flow_to_process->is_midstream_flow != 0 ? "midstream-" : ""));
 		if (ndpi_tsearch(flow_to_process, &workflow->ndpi_flows_active[hashed_index], ndpi_workflow_node_cmp) == NULL) {

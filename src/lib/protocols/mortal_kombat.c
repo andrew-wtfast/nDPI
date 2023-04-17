@@ -30,6 +30,9 @@ static void ndpi_search_mortal_kombat(struct ndpi_detection_module_struct *ndpi_
 	In addition to the signature implemented below, after the initial two packets
 	are exchanged (one from client, once from server) every subsequent packet 
 	payload begins with 0xF9000000.
+
+	Note that packet_direction == 1 seems to indicate client -> server which is
+	inconsistent with what has been observed in other signatures afaik.
 	*/
 
     struct ndpi_packet_struct *const packet = &ndpi_struct->packet;
