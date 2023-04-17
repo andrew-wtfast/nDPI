@@ -46,7 +46,7 @@
 #define LOG_DBG      (5)
 
 
-#define LOG_PRINTF(level, ...) do {if (level <= g_log_verbosity) {fprintf( stderr, __VA_ARGS__ ); }} while(0 )
+#define LOG_PRINTF(level, ...) do {if (level <= g_log_verbosity) {fprintf( stdout, __VA_ARGS__ ); }} while(0 )
 #ifdef WIN32
 #include <windows.h>
 #endif
@@ -111,6 +111,7 @@ struct nDPI_flow_info
 		} u32;
 	} ip_tuple;
 
+	struct ndpi_ethhdr ethernet;
 	unsigned long long int total_l4_data_len;
 	uint16_t src_port;
 	uint16_t dst_port;
@@ -577,10 +578,10 @@ static void check_for_idle_flows(struct nDPI_workflow *const workflow)
 	}
 }
 
-static void print_flow_classification(struct nDPI_workflow *workflow, struct nDPI_flow_info *flow_to_process, const struct ndpi_ethhdr *ethernet) 
+static void print_flow_classification(struct nDPI_workflow *workflow, struct nDPI_flow_info *flow_info) 
 {
-	const char *category = ndpi_category_get_name(workflow->ndpi_struct, flow_to_process->detected_l7_protocol.category);
-	char *proto_name = ndpi_get_proto_name(workflow->ndpi_struct, flow_to_process->detected_l7_protocol.app_protocol);
+	const char *category = ndpi_category_get_name(workflow->ndpi_struct, flow_info->detected_l7_protocol.category);
+	char *proto_name = ndpi_get_proto_name(workflow->ndpi_struct, flow_info->detected_l7_protocol.app_protocol);
 
 	// Only show results for the protocol chosen at the command line
 	if (g_one_proto != NULL && strcmp(g_one_proto, proto_name) != 0) 
@@ -590,33 +591,35 @@ static void print_flow_classification(struct nDPI_workflow *workflow, struct nDP
 	if (g_category != NULL && (strcmp(category, g_category) != 0))
 		return;
 
-	// Show the classification if we are only showing games blah blah TODO
-//	if 	((g_category != NULL && (strcmp(category, g_category) == 0)) || !g_show_games_only) {
-		char src_addr_str[INET6_ADDRSTRLEN + 1] = { 0 };
-		char dst_addr_str[INET6_ADDRSTRLEN + 1] = { 0 };
+	char src_addr_str[INET6_ADDRSTRLEN + 1] = { 0 };
+	char dst_addr_str[INET6_ADDRSTRLEN + 1] = { 0 };
 
-		if (ip_tuple_to_string(flow_to_process, src_addr_str, sizeof(src_addr_str), dst_addr_str, sizeof(dst_addr_str)) == 0) {
-			LOG_PRINTF(LOG_DBG, "ip_tuple_to_string failed %s[%d]", __FILE__, __LINE__);
-		}
+	if (ip_tuple_to_string(flow_info, src_addr_str, sizeof(src_addr_str), dst_addr_str, sizeof(dst_addr_str)) == 0) {
+		LOG_PRINTF(LOG_DBG, "ip_tuple_to_string failed %s[%d]", __FILE__, __LINE__);
+	}
 
-		char eth_addr[64];
-		if (ethernet != NULL) {
-			sprintf(eth_addr,"%x:%x:%x:%x:%x:%x",
-				ethernet->h_source[0],ethernet->h_source[1], ethernet->h_source[2],ethernet->h_source[3], ethernet->h_source[4],ethernet->h_source[5]);
-		}
+	char client_mac_str[18];
+	sprintf(client_mac_str,"%x:%x:%x:%x:%x:%x",
+		flow_info->ethernet.h_source[0],flow_info->ethernet.h_source[1],flow_info->ethernet.h_source[2],
+		flow_info->ethernet.h_source[3],flow_info->ethernet.h_source[4],flow_info->ethernet.h_source[5]);
 
-		LOG_PRINTF(LOG_INFO, "Flow ID:\t%d\nClassification:\t%s\nCategory:\t%s\nSrc:\t\t%s:%d\nDst:\t\t%s:%d\nSrc Mac:\t%s\n\n", 
-			flow_to_process->flow_id,
-			ndpi_get_proto_name(workflow->ndpi_struct, flow_to_process->detected_l7_protocol.app_protocol),
-//					ndpi_category_get_name(workflow->ndpi_struct, flow_to_process->detected_l7_protocol.category),
-			category,
-			src_addr_str,
-			ntohs(flow_to_process->src_port),
-			dst_addr_str,
-			ntohs(flow_to_process->dst_port),
-			(ethernet == NULL) ? "n/a":eth_addr
-		);
-//	}
+	char server_mac_str[18];
+	sprintf(server_mac_str,"%x:%x:%x:%x:%x:%x",
+		flow_info->ethernet.h_dest[0],flow_info->ethernet.h_dest[1],flow_info->ethernet.h_dest[2],
+		flow_info->ethernet.h_dest[3],flow_info->ethernet.h_dest[4],flow_info->ethernet.h_dest[5]);
+
+	LOG_PRINTF(LOG_INFO, "Flow ID:\t%d\nClassification:\t%s\nCategory:\t%s\nClient:\t\t%s:%d (MAC %s)\nServer:\t\t%s:%d (MAC %s)\n\n", 
+		flow_info->flow_id,
+		ndpi_get_proto_name(workflow->ndpi_struct, flow_info->detected_l7_protocol.app_protocol),
+		category,
+		src_addr_str,
+		ntohs(flow_info->src_port),
+		client_mac_str,
+		dst_addr_str,
+		ntohs(flow_info->dst_port),
+		server_mac_str
+	);
+	LOG_PRINTF(LOG_INFO, "\n");
 }
 
 static void ndpi_process_packet(uint8_t * const args, struct pcap_pkthdr const *const header, uint8_t const *const packet)
@@ -885,6 +888,14 @@ static void ndpi_process_packet(uint8_t * const args, struct pcap_pkthdr const *
 		}
 		memset(flow_to_process->ndpi_flow, 0, SIZEOF_FLOW_STRUCT);
 
+		// Save the ethernet addresses of the first packet of the flow.
+		// If the first packet isn't mid-flow then hopefully this will accurately
+		// tell us the mac address of the client ie: the hw addr associated with an 
+		// rfc1918 ip address.
+		if (ethernet != NULL) {
+			memcpy(&flow_to_process->ethernet, ethernet, sizeof(struct ndpi_ethhdr));
+		}
+
 		LOG_PRINTF(LOG_DBG, "[%8llu, %d, %4u] new %sflow\n", workflow->packets_captured, thread_index, flow_to_process->flow_id, (flow_to_process->is_midstream_flow != 0 ? "midstream-" : ""));
 		if (ndpi_tsearch(flow_to_process, &workflow->ndpi_flows_active[hashed_index], ndpi_workflow_node_cmp) == NULL) {
 			/* Possible Leak, but should not happen as we'd abort earlier. */
@@ -939,41 +950,13 @@ static void ndpi_process_packet(uint8_t * const args, struct pcap_pkthdr const *
 			flow_to_process->detection_completed = 1;
 			workflow->detected_flow_protocols++;
 
-			// Display classification results
-			// TODO move all of this to a function later
+			print_flow_classification(workflow, flow_to_process);
 
-			print_flow_classification(workflow, flow_to_process, ethernet);
-/*		
-			const char *category = ndpi_category_get_name(workflow->ndpi_struct, flow_to_process->detected_l7_protocol.category);
-			char *proto_name = ndpi_get_proto_name(workflow->ndpi_struct, flow_to_process->detected_l7_protocol.app_protocol);
-
-			if (strcmp(g_one_proto, proto_name) == 0 ||	(g_show_games_only && (strcmp(category, "Game") == 0)) || !g_show_games_only) {
-				char src_addr_str[INET6_ADDRSTRLEN + 1] = { 0 };
-				char dst_addr_str[INET6_ADDRSTRLEN + 1] = { 0 };
-
-				if (ip_tuple_to_string(flow_to_process, src_addr_str, sizeof(src_addr_str), dst_addr_str, sizeof(dst_addr_str)) == 0) {
-					LOG_PRINTF(LOG_DBG, "ip_tuple_to_string failed %s[%d]", __FILE__, __LINE__);
-				}
-
-				char eth_addr[64];
-				if (ethernet != NULL) {
-					sprintf(eth_addr,"%x:%x:%x:%x:%x:%x",
-						ethernet->h_source[0],ethernet->h_source[1], ethernet->h_source[2],ethernet->h_source[3], ethernet->h_source[4],ethernet->h_source[5]);
-				}
-
-				LOG_PRINTF(LOG_INFO, "Flow ID:\t%d\nClassification:\t%s\nCategory:\t%s\nSrc:\t\t%s:%d\nDst:\t\t%s:%d\nSrc Mac:\t%s\n\n", 
-					flow_to_process->flow_id,
-					ndpi_get_proto_name(workflow->ndpi_struct, flow_to_process->detected_l7_protocol.app_protocol),
-//					ndpi_category_get_name(workflow->ndpi_struct, flow_to_process->detected_l7_protocol.category),
-					category,
-					src_addr_str,
-					ntohs(flow_to_process->src_port),
-					dst_addr_str,
-					ntohs(flow_to_process->dst_port),
-					(ethernet == NULL) ? "n/a":eth_addr
-				);
-			}
-*/
+//			LOG_PRINTF(LOG_INFO, "ndpi_flow Packet direction: %d\n", flow_to_process->ndpi_flow->packet_direction);
+//			LOG_PRINTF(LOG_INFO, "ndpi_flow client Packet direction: %d\n", flow_to_process->ndpi_flow->client_packet_direction);
+//			LOG_PRINTF(LOG_INFO, "%s\n\n\n", flow_to_process->ndpi_flow->client_packet_direction == flow_to_process->ndpi_flow->packet_direction ? "client-->server" : "server-->client");
+//			LOG_PRINTF(LOG_INFO, "ndpi_flow c_address: %d\n", flow_to_process->ndpi_flow->c_address.v4);
+		
 		}
 	}
 
