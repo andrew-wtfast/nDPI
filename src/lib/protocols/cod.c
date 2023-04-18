@@ -31,28 +31,55 @@ static void ndpi_int_cod_add_connection(struct ndpi_detection_module_struct
                                NDPI_PROTOCOL_UNKNOWN, NDPI_CONFIDENCE_DPI);
 }
 
-static void ndpi_search_cod(struct ndpi_detection_module_struct *ndpi_struct,
-                            struct ndpi_flow_struct *flow) {
+static void ndpi_search_cod(struct ndpi_detection_module_struct *ndpi_struct, struct ndpi_flow_struct *flow) {
     struct ndpi_packet_struct *const packet = &ndpi_struct->packet;
 
-    if (flow->packet_counter != 1) {
-        NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
-        return;
-    }
+	if (packet->udp == NULL) {
+		return;
+	}
 
-    if (packet->payload_packet_len != 29) {
-        NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
-        return;
-    }
+	u_int16_t dport = ntohs(packet->udp->dest);
+	u_int16_t sport = ntohs(packet->udp->source);
+	if (sport != 53 && sport != 88 && sport != 500 && sport != 3074 && sport != 3075 && sport != 3544 && sport != 4500 &&
+		dport != 53 && dport != 88 && dport != 500 && dport != 3074 && dport != 3075 && dport != 3544 && dport != 4500) {
+		NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
+	}
 
-    if (packet->payload[0] == 0x0d && packet->payload[1] == 0x02
-        && packet->payload[2] == 0x00 && packet->payload[17] == 0x0a
-        && packet->payload[18] == 0xff && packet->payload[19] == 0x7f) {
-        ndpi_int_cod_add_connection(ndpi_struct, flow);
-        return;
-    }
+	if (packet->payload_packet_len != 29) {
+		NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
+		return;
+	}
 
-    NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
+	do {
+		if ((packet->payload[0] == 0x0c || packet->payload[0] == 0x0d) && packet->payload[1] == 0x02 && packet->payload[2] == 0x00 && packet->payload[21] == 0x03 && packet->payload[22] == 0x0c) {
+			break;
+		}
+		else {
+			NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
+			return;
+		}
+	} while (0);
+
+//	if (!(packet->payload[0] == 0x0c || packet->payload[0] == 0x0d) && 
+//		!(packet->payload[1] == 0x02 && packet->payload[2] == 0x00 && packet->payload[21] == 0x03 && packet->payload[22] == 0x0c)) {
+//		NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
+//		return;
+//	}
+
+	if (packet->packet_direction == 0 && flow->packet_direction_counter[1] != 0) {
+		ndpi_int_cod_add_connection(ndpi_struct, flow);
+		return;
+	}
+	
+	if (packet->packet_direction == 1 && flow->packet_direction_counter[0] != 0) {
+		ndpi_int_cod_add_connection(ndpi_struct, flow);
+		return;
+	}
+
+	if (flow->packet_counter > 4) {
+		NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
+		return;
+	}
 }
 
 void init_cod_dissector(struct ndpi_detection_module_struct *ndpi_struct,

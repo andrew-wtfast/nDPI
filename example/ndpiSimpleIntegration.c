@@ -601,12 +601,12 @@ static void print_flow_classification(struct nDPI_workflow *workflow, struct nDP
 	}
 
 	char client_mac_str[18];
-	sprintf(client_mac_str,"%x:%x:%x:%x:%x:%x",
+	sprintf(client_mac_str,"%02x:%02x:%02x:%02x:%02x:%02x",
 		flow_info->ethernet.h_source[0],flow_info->ethernet.h_source[1],flow_info->ethernet.h_source[2],
 		flow_info->ethernet.h_source[3],flow_info->ethernet.h_source[4],flow_info->ethernet.h_source[5]);
 
 	char server_mac_str[18];
-	sprintf(server_mac_str,"%x:%x:%x:%x:%x:%x",
+	sprintf(server_mac_str,"%02x:%02x:%02x:%02x:%02x:%02x",
 		flow_info->ethernet.h_dest[0],flow_info->ethernet.h_dest[1],flow_info->ethernet.h_dest[2],
 		flow_info->ethernet.h_dest[3],flow_info->ethernet.h_dest[4],flow_info->ethernet.h_dest[5]);
 
