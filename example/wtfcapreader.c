@@ -610,10 +610,11 @@ static void print_flow_classification(struct nDPI_workflow *workflow, struct nDP
 		flow_info->ethernet.h_dest[0],flow_info->ethernet.h_dest[1],flow_info->ethernet.h_dest[2],
 		flow_info->ethernet.h_dest[3],flow_info->ethernet.h_dest[4],flow_info->ethernet.h_dest[5]);
 
-	LOG_PRINTF(LOG_INFO, "Flow ID:\t\t%d\nStarted on Packet:\t%llu\nClassification:\t\t%s\nCategory:\t\t%s\nClient:\t\t\t%s:%d (MAC %s)\nServer:\t\t\t%s:%d (MAC %s)\n", 
+	LOG_PRINTF(LOG_INFO, "Flow ID:\t\t%d\nStarted on Packet:\t%llu\nClassification:\t\t%s after %d packets\nCategory:\t\t%s\nClient:\t\t\t%s:%d (MAC: %s)\nServer:\t\t\t%s:%d (MAC: %s)\n", 
 		flow_info->flow_id,
 		flow_info->first_packet,
 		ndpi_get_proto_name(workflow->ndpi_struct, flow_info->detected_l7_protocol.app_protocol),
+		flow_info->ndpi_flow->num_processed_pkts,
 		category,
 		src_addr_str,
 		flow_info->src_port, // port is already converted to host format
@@ -935,10 +936,20 @@ static void ndpi_process_packet(uint8_t * const args, struct pcap_pkthdr const *
 	 * This example tries to use maximum supported packets for detection:
 	 * for uint8: 0xFF
 	 */
+
+	// TODO Wtfast
+	// ndpi_detection_process_packet() will set flow->fail_with_unknown after
+	// flow->num_processed_packets >= ndpi_str->max_packets_to_process (this is
+	// configurable, default is 32). Subsequent calls to
+	// ndpi_detection_process_packet() just return without processing the
+	// packet. So this last chance guess section of code needs to be
+	// reconsidered. Possibly just use max_packets_to_process instead of 0xFF.
+	//
+	/*
 	if (flow_to_process->ndpi_flow->num_processed_pkts == 0xFF) {
 		return;
 	} else if (flow_to_process->ndpi_flow->num_processed_pkts == 0xFE) {
-		/* last chance to guess something, better then nothing */
+		// last chance to guess something, better then nothing
 		uint8_t protocol_was_guessed = 0;
 		flow_to_process->guessed_protocol = ndpi_detection_giveup(workflow->ndpi_struct, flow_to_process->ndpi_flow, 1, &protocol_was_guessed);
 		if (protocol_was_guessed != 0) {
@@ -947,22 +958,30 @@ static void ndpi_process_packet(uint8_t * const args, struct pcap_pkthdr const *
 			LOG_PRINTF(LOG_DBG, "[%8llu, %d, %4d][FLOW NOT CLASSIFIED]\n", workflow->packets_captured, reader_thread->array_index, flow_to_process->flow_id);
 		}
 	}
+	*/
+
+	if (flow_to_process->detection_completed) {
+		// This stops further packet processing and skips the tls certificate scraping below in "business section"
+		return;
+	}
 
 	flow_to_process->detected_l7_protocol = ndpi_detection_process_packet(workflow->ndpi_struct, flow_to_process->ndpi_flow, ip != NULL ? (uint8_t *) ip : (uint8_t *) ip6, ip_size, time_ms, NULL);
 
+	// Give up on this flow, print unknown classification
+	if (flow_to_process->ndpi_flow->fail_with_unknown == 1) {
+		flow_to_process->detection_completed = 1;
+		print_flow_classification(workflow, flow_to_process);
+	}
+
 	if (ndpi_is_protocol_detected(workflow->ndpi_struct, flow_to_process->detected_l7_protocol) != 0 && flow_to_process->detection_completed == 0) {
 		if (flow_to_process->detected_l7_protocol.master_protocol != NDPI_PROTOCOL_UNKNOWN || flow_to_process->detected_l7_protocol.app_protocol != NDPI_PROTOCOL_UNKNOWN) {
-
 			flow_to_process->detection_completed = 1;
 			workflow->detected_flow_protocols++;
-
 			print_flow_classification(workflow, flow_to_process);
-
 //			LOG_PRINTF(LOG_INFO, "ndpi_flow Packet direction: %d\n", flow_to_process->ndpi_flow->packet_direction);
 //			LOG_PRINTF(LOG_INFO, "ndpi_flow client Packet direction: %d\n", flow_to_process->ndpi_flow->client_packet_direction);
 //			LOG_PRINTF(LOG_INFO, "%s\n\n\n", flow_to_process->ndpi_flow->client_packet_direction == flow_to_process->ndpi_flow->packet_direction ? "client-->server" : "server-->client");
 //			LOG_PRINTF(LOG_INFO, "ndpi_flow c_address: %d\n", flow_to_process->ndpi_flow->c_address.v4);
-		
 		}
 	}
 
