@@ -616,10 +616,10 @@ static void print_flow_classification(struct nDPI_workflow *workflow, struct nDP
 		ndpi_get_proto_name(workflow->ndpi_struct, flow_info->detected_l7_protocol.app_protocol),
 		category,
 		src_addr_str,
-		flow_info->src_port,
+		flow_info->src_port, // port is already converted to host format
 		client_mac_str,
 		dst_addr_str,
-		flow_info->dst_port,
+		flow_info->dst_port, // port is already converted to host format
 		server_mac_str
 	);
 	LOG_PRINTF(LOG_INFO, "\n");

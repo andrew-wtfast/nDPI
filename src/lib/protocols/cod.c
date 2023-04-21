@@ -50,8 +50,16 @@ static void ndpi_search_cod(struct ndpi_detection_module_struct *ndpi_struct, st
 		return;
 	}
 
+	// TODO
+	// xbox seems to be 03 0c on 3075
+	// ps3 seems to be 02 0c on 3074
+	// officially it's not the case according to activision
+
 	do {
-		if ((packet->payload[0] == 0x0c || packet->payload[0] == 0x0d) && packet->payload[1] == 0x02 && packet->payload[2] == 0x00 && packet->payload[21] == 0x03 && packet->payload[22] == 0x0c) {
+		if ((packet->payload[0] == 0x0c || packet->payload[0] == 0x0d) && 
+			packet->payload[1] == 0x02 && packet->payload[2] == 0x00 && 
+			(packet->payload[21] == 0x02 || packet->payload[21] == 0x03) && 
+			packet->payload[22] == 0x0c) {
 			break;
 		}
 		else {

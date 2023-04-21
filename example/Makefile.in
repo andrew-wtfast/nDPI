@@ -42,9 +42,9 @@ endif
 
 CFLAGS+=-pthread
 
-all: ndpiReader$(EXE_SUFFIX) @DPDK_TARGET@
+all: ndpiReader$(EXE_SUFFIX) ndpiSimpleIntegration.c$(EXE_SUFFIX) wtfcapreader$(EXE_SUFFIX)  @DPDK_TARGET@
 
-EXECUTABLE_SOURCES := ndpiReader.c ndpiSimpleIntegration.c
+EXECUTABLE_SOURCES := ndpiReader.c ndpiSimpleIntegration.c wtfcapreader.c
 COMMON_SOURCES := $(filter-out $(EXECUTABLE_SOURCES),$(wildcard *.c ))
 
 libndpiReader.a: $(COMMON_SOURCES:%.c=%.o) $(LIBNDPI)
@@ -54,6 +54,9 @@ ndpiReader$(EXE_SUFFIX): libndpiReader.a $(LIBNDPI) ndpiReader.o
 	$(CC) $(CFLAGS) $(LDFLAGS) ndpiReader.o libndpiReader.a $(LIBS) -o $@
 
 ndpiSimpleIntegration$(EXE_SUFFIX): ndpiSimpleIntegration.o
+	$(CC) $(CFLAGS) $(LDFLAGS) $< $(LIBS) -o $@
+
+wtfcapreader$(EXE_SUFFIX): wtfcapreader.o 
 	$(CC) $(CFLAGS) $(LDFLAGS) $< $(LIBS) -o $@
 
 %.o: %.c $(HEADERS) Makefile
@@ -79,7 +82,7 @@ cppcheck:
 	 cppcheck --template='{file}:{line}:{severity}:{message}' --quiet --enable=all --force -I$(SRCHOME)/include *.c
 
 clean:
-	/bin/rm -f *.o ndpiReader ndpiSimpleIntegration ndpiReader$(EXE_SUFFIX) ndpiSimpleIntegration$(EXE_SUFFIX) ndpiReader.dpdk libndpiReader.a
+	/bin/rm -f *.o ndpiReader ndpiSimpleIntegration wtfcapreader wtfcapreader$(EXE_SUFFIX) ndpiReader$(EXE_SUFFIX) ndpiSimpleIntegration$(EXE_SUFFIX) ndpiReader.dpdk libndpiReader.a
 	/bin/rm -f .*.dpdk.cmd .*.o.cmd *.dpdk.map .*.o.d
 	/bin/rm -f _install _postbuild _postinstall _preinstall
 	/bin/rm -rf build
