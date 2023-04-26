@@ -56,19 +56,8 @@ static void ndpi_search_rocket_league(struct ndpi_detection_module_struct *ndpi_
 
     struct ndpi_packet_struct *const packet = &ndpi_struct->packet;
 
-	// If this is too restrictive increase upper limit
-	if (packet->payload_packet_len < 48 || packet->payload_packet_len > 496) {
-		NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
-		return;
-	}
-
-	if (packet->payload_packet_len < 48) {
-		NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
-		return;
-	}
-
     if (flow->packet_counter == 1) {
-		if (packet->packet_direction == 0 && packet->payload_packet_len == 80) {
+		if (packet->payload_packet_len == 80) {
 			return; //continue inspecting
 		} else {
 			NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
@@ -76,16 +65,14 @@ static void ndpi_search_rocket_league(struct ndpi_detection_module_struct *ndpi_
 		}
 	}
 
-    if (flow->packet_counter == 2 || flow->packet_counter == 3) {
-		if (packet->packet_direction == 0 && packet->payload_packet_len == 48) {
-			return; //continue inspecting
-		} else {
-			NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
-			return;
-		}
+	if (packet->payload_packet_len != 48 && packet->payload_packet_len != 64 && packet->payload_packet_len != 80) {
+		NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
+		return;
 	}
 
-	if (flow->packet_counter >= 10) {
+    if (flow->packet_counter < 6) {
+		return; //continue inspecting
+	} else { 
 		ndpi_set_detected_protocol(ndpi_struct, flow, NDPI_PROTOCOL_ROCKET_LEAGUE, NDPI_PROTOCOL_UNKNOWN, NDPI_CONFIDENCE_DPI);
 	}
 }
