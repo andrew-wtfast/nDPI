@@ -26,36 +26,36 @@
 
 static void ndpi_search_mortal_kombat(struct ndpi_detection_module_struct *ndpi_struct, struct ndpi_flow_struct *flow) {
 
-	/*
-	In addition to the signature implemented below, after the initial two packets
-	are exchanged (one from client, once from server) every subsequent packet 
-	payload begins with 0xF9000000.
-
-	Note that packet_direction == 1 seems to indicate client -> server which is
-	inconsistent with what has been observed in other signatures afaik.
-	*/
-
     struct ndpi_packet_struct *const packet = &ndpi_struct->packet;
 
 	if (flow->packet_direction_counter[packet->packet_direction] == 1) {
 
 		if (packet->packet_direction == 1) {
-			if (packet->payload_packet_len >= 17 && (memcmp(packet->payload, "\xFD\x00\x00\x00\x02", 5) == 0)) {
+			if (packet->payload_packet_len >= 16 && packet->payload[0] > 0xf0) {
 				// Save 16 bytes in order to compare them to the payload in the response
-				memcpy(flow->l4.udp.mortal_kombat_bytes, packet->payload + 1, 16);
+				memcpy(flow->l4.udp.mortal_kombat_bytes, packet->payload, 16);
 				return; // continue inspecting
-			} else {
-				NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
-				return;
 			}
 		} else {
-			// Compare a portion of this response payload to the payload of the first client to server packet.
-			if (packet->payload_packet_len == 21 && (memcmp(flow->l4.udp.mortal_kombat_bytes, packet->payload + 1, 16) == 0)) {
+			// Compare a chunk of the first server packet payload with the first client 
+			// packet. The different cases probably reflect different types of game play 
+			// (local multiplayer, tournament). No idea which is which at this point.
+
+			// Case 1: First byte different, len == 21
+			if (packet->payload_packet_len == 21 && (memcmp(flow->l4.udp.mortal_kombat_bytes + 1, packet->payload + 1, 15) == 0)) {
 				ndpi_set_detected_protocol(ndpi_struct, flow, NDPI_PROTOCOL_MORTAL_KOMBAT, NDPI_PROTOCOL_UNKNOWN, NDPI_CONFIDENCE_DPI);
+				return;
+			}
+			// Case 2: Bytes 0-5 the same, byte 6 is off by one or equal, bytes 7-9 the same
+			else if (packet->payload_packet_len > 16 && 
+					(memcmp(flow->l4.udp.mortal_kombat_bytes, packet->payload, 6) == 0) &&
+					(memcmp(flow->l4.udp.mortal_kombat_bytes + 7, packet->payload + 7, 3) == 0) &&
+					abs((packet->payload[6] - flow->l4.udp.mortal_kombat_bytes[6])) <= 1) {
+				ndpi_set_detected_protocol(ndpi_struct, flow, NDPI_PROTOCOL_MORTAL_KOMBAT, NDPI_PROTOCOL_UNKNOWN, NDPI_CONFIDENCE_DPI);
+				return;
 			}
 		}
 	}
-
 	NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
 }
 
