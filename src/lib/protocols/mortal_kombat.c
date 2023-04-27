@@ -30,7 +30,7 @@ static void ndpi_search_mortal_kombat(struct ndpi_detection_module_struct *ndpi_
 
 	if (flow->packet_direction_counter[packet->packet_direction] == 1) {
 
-		if (packet->packet_direction == 1) {
+		if (ndpi_current_pkt_from_client_to_server(packet, flow)) {
 			if (packet->payload_packet_len >= 16 && packet->payload[0] > 0xf0) {
 				// Save 16 bytes in order to compare them to the payload in the response
 				memcpy(flow->l4.udp.mortal_kombat_bytes, packet->payload, 16);

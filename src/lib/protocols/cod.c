@@ -45,7 +45,7 @@ static void ndpi_search_cod(struct ndpi_detection_module_struct *ndpi_struct, st
 		NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
 	}
 
-	if (packet->payload_packet_len != 29) {
+	if (flow->packet_counter == 1 && packet->payload_packet_len != 29) {
 		NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
 		return;
 	}
