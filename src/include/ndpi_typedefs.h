@@ -868,6 +868,7 @@ struct ndpi_flow_udp_struct {
 
   /* NDPI_PROTOCOL_WORK_OF_TANKS */
   u_int32_t world_of_tanks_pkt_len;
+  u_int32_t world_of_tanks_type:1;
 
 };
 
