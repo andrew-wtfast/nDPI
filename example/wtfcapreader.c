@@ -55,7 +55,7 @@
 #define MAX_FLOW_ROOTS_PER_THREAD 2048
 #define MAX_IDLE_FLOWS_PER_THREAD 64
 #define TICK_RESOLUTION 1000
-#define MAX_READER_THREADS 1
+#define MAX_READER_THREADS 4
 #define IDLE_SCAN_PERIOD 10000	/* msec */
 #define MAX_IDLE_TIME 300000	/* msec */
 #define INITIAL_THREAD_HASH 0x03dd018b
@@ -182,10 +182,13 @@ static struct nDPI_reader_thread reader_threads[MAX_READER_THREADS] = { };
 static int reader_thread_count = MAX_READER_THREADS;
 static volatile long int main_thread_shutdown = 0;
 static volatile long int flow_id = 0;
+
+//Set via command line
 static char *g_category;			// Only show results for this category
 static uint8_t g_log_verbosity;		// Debug log output level
 static char *g_pcap_or_device;		// Name of pcap file or device
 static char *g_one_proto;			// Only show classifications of this protocol eg: MortalKombat
+static char *g_bpf_filter;			// Filter
 
 #ifdef WTFAST_SERIALIZE
 int pipe_fd = 0;
@@ -197,7 +200,6 @@ static struct nDPI_workflow *init_workflow(char const *const file_or_device)
 {
 	char pcap_error_buffer[PCAP_ERRBUF_SIZE];
 	struct nDPI_workflow *workflow = (struct nDPI_workflow *)ndpi_calloc(1, sizeof(*workflow));
-	const char *bpfFilter = "ip or ip6";
 	static struct bpf_program bpf_code;
 	static struct bpf_program *bpf_cfilter = NULL;
 
@@ -221,7 +223,7 @@ static struct nDPI_workflow *init_workflow(char const *const file_or_device)
 		return NULL;
 	}
 
-	if (pcap_compile(workflow->pcap_handle, &bpf_code, bpfFilter, 1, 0xFFFFFF00) < 0) {
+	if (pcap_compile(workflow->pcap_handle, &bpf_code, g_bpf_filter, 1, 0xFFFFFF00) < 0) {
 		LOG_PRINTF(LOG_FATAL, "pcap_compile error: '%s'\n", pcap_geterr(workflow->pcap_handle));
 		exit(-1);
 	}
@@ -1216,10 +1218,11 @@ static void sighandler(int signum)
 
 static void usage(char *appname) 
 {
-	printf("Usage: %s -i <file|device> [-c category] [-p protocol] [-v loglevel]\n", appname);
+	printf("Usage: %s -i <file|device> [-c category] [-p protocol] [-f BPF filter] [-v loglevel]\n", appname);
 	printf("  -i\tpcap file or device name\n");
 	printf("  -c\tshow only results for this category eg: Game\n");
 	printf("  -p\tshow only results this protocol eg: MortalKombat\n");
+	printf("  -f\tspecify a BPF filter eg: \"ether host e8:2a:ea:44:55:66\"\n");
 	printf("  -v\tlog verbosity low=1, high=5, default=4\n");
 }
 
@@ -1231,7 +1234,7 @@ int main(int argc, char **argv)
 	g_category = NULL;
 	g_one_proto = NULL;
 
-	while ((opt = getopt(argc, argv, "p:i:c:v:")) != -1) {
+	while ((opt = getopt(argc, argv, "f:p:i:c:v:")) != -1) {
 		switch (opt) {
 			case 'c':
 				g_category = optarg;
@@ -1249,6 +1252,9 @@ int main(int argc, char **argv)
 				break;
 			case 'p':
 				g_one_proto = optarg;
+				break;
+			case 'f':
+				g_bpf_filter = optarg;
 				break;
 			default:
 				usage(argv[0]);

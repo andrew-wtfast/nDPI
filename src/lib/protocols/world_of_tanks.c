@@ -160,7 +160,6 @@ static void ndpi_search_world_of_tanks(struct ndpi_detection_module_struct *ndpi
 		if (ndpi_current_pkt_from_client_to_server(packet, flow)) {
 		
 			if (packet->payload_packet_len == 278 && memcmp(packet->payload + 4, "\x01\x00\x00\x05\x01", 5) == 0) {
-				printf("inspecting game flow\n");
 				flow->l4.udp.world_of_tanks_type = 0;
 				return;
 			}
@@ -168,7 +167,6 @@ static void ndpi_search_world_of_tanks(struct ndpi_detection_module_struct *ndpi
 			if (packet->payload_packet_len == 22
 				&& memcmp(packet->payload + 4, "\x01\x00\x00", 3) == 0 
 				&& memcmp(packet->payload + 10, "\x00\x00\x00", 3) == 0) {
-				printf("inspecting lobby flow\n");
 				flow->l4.udp.world_of_tanks_type = 1;
 				return;
 			}
