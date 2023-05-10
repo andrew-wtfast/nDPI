@@ -32,7 +32,12 @@ This signature is based on just two pcaps:
 WoT_NA_Central_filtered.pcap
 WoT_NA_South_filtered.pcap
 
-There is a lobby flow and a game play flow. 
+There is a lobby flow, a game play flow, and a third flow.
+
+Initially there is lobby traffic that stops when game play starts.
+
+There is an additional flow that starts when game play starts. Similar to lobby.  
+Minimal packets. Not classified for now.
 
 Game flow:
 
@@ -69,6 +74,8 @@ static void wot_inspect_game(struct ndpi_detection_module_struct *ndpi_struct, s
 
     struct ndpi_packet_struct *const packet = &ndpi_struct->packet;
 	uint8_t total_pkts_to_inspect = 10;
+
+	// Inspection here begins on 2nd packet of flow
 
 	if (ndpi_current_pkt_from_client_to_server(packet, flow)) {
 		
@@ -116,6 +123,8 @@ static void wot_inspect_lobby(struct ndpi_detection_module_struct *ndpi_struct, 
     struct ndpi_packet_struct *const packet = &ndpi_struct->packet;
 	uint8_t total_pkts_to_inspect = 10;
 
+	// Inspection here begins on 2nd packet of flow
+
 	if (ndpi_current_pkt_from_client_to_server(packet, flow)) {
 		
 		if (packet->payload_packet_len == 28) {
@@ -160,14 +169,14 @@ static void ndpi_search_world_of_tanks(struct ndpi_detection_module_struct *ndpi
 		if (ndpi_current_pkt_from_client_to_server(packet, flow)) {
 		
 			if (packet->payload_packet_len == 278 && memcmp(packet->payload + 4, "\x01\x00\x00\x05\x01", 5) == 0) {
-				flow->l4.udp.world_of_tanks_type = 0;
+				flow->l4.udp.world_of_tanks_type = 0; //game?
 				return;
 			}
 
 			if (packet->payload_packet_len == 22
 				&& memcmp(packet->payload + 4, "\x01\x00\x00", 3) == 0 
 				&& memcmp(packet->payload + 10, "\x00\x00\x00", 3) == 0) {
-				flow->l4.udp.world_of_tanks_type = 1;
+				flow->l4.udp.world_of_tanks_type = 1; //lobby?
 				return;
 			}
 		}

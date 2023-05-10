@@ -866,9 +866,13 @@ struct ndpi_flow_udp_struct {
   /* NDPI_PROTOCOL_MORTAL_KOMBAT */
   u_int8_t mortal_kombat_bytes[16];
 
-  /* NDPI_PROTOCOL_WORK_OF_TANKS */
+  /* NDPI_PROTOCOL_WORLD_OF_TANKS */
   u_int32_t world_of_tanks_pkt_len;
   u_int32_t world_of_tanks_type:1;
+
+  /* NDPI_PROTOCOL_ROCKET_LEAGUE */
+  u_int8_t rocket_league_octets[8];
+  u_int32_t rocket_league_state:1;
 
 };
 
@@ -1620,7 +1624,6 @@ struct ndpi_flow_struct {
 
   /* NDPI_PROTOCOL_OOKLA */
   u_int8_t ookla_stage : 1;
-
 
   /* NDPI_PROTOCOL_OPENVPN */
   u_int8_t ovpn_session_id[8];

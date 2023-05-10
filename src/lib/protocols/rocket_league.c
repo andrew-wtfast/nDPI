@@ -50,6 +50,19 @@ Note 2:
 The OpenVPN signature will classify with packet_num = 1, payload_len = 80,
 opcode = 60. This is a weak signature and conflicts with some (suspected) 
 Rocket League flows.
+
+Note 3:
+
+There is a main game flow common to all pcaps (so far) plus an associated flow
+which is present in some traces.
+
+The signature for the main game flow is simply based on udp packet size beginning
+with 80 then 48 or 64 or 80 for several packets. Meh. Not great.
+
+The associated flow is client to server exclusively, payload len = 8, and the
+payload is duplicated such that p1,p2 have same payload, p2,p3 have same 
+payload, etc. Only p1,p2 are checked.
+
 */
 
 static void ndpi_search_rocket_league(struct ndpi_detection_module_struct *ndpi_struct, struct ndpi_flow_struct *flow) {
@@ -58,21 +71,48 @@ static void ndpi_search_rocket_league(struct ndpi_detection_module_struct *ndpi_
 
     if (flow->packet_counter == 1) {
 		if (packet->payload_packet_len == 80) {
-			return; //continue inspecting
+			// Game?
+			flow->l4.udp.rocket_league_state = 0;
+			return;
+		} else if (packet->payload_packet_len == 8) {
+			// Associated flow?
+			memcpy(flow->l4.udp.rocket_league_octets, packet->payload, 8);
+			flow->l4.udp.rocket_league_state = 1;
+			return;
 		} else {
 			NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
 			return;
 		}
 	}
+	
+	if (flow->l4.udp.rocket_league_state == 0) {
 
-	if (packet->payload_packet_len != 48 && packet->payload_packet_len != 64 && packet->payload_packet_len != 80) {
-		NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
-		return;
-	}
+		if (packet->payload_packet_len != 48 && packet->payload_packet_len != 64 && packet->payload_packet_len != 80) {
+			NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
+			return;
+		}
 
-    if (flow->packet_counter < 6) {
-		return; //continue inspecting
-	} else { 
+		if (flow->packet_counter < 6) {
+			return; //continue inspecting
+		} else { 
+			ndpi_set_detected_protocol(ndpi_struct, flow, NDPI_PROTOCOL_ROCKET_LEAGUE, NDPI_PROTOCOL_UNKNOWN, NDPI_CONFIDENCE_DPI);
+		}
+	} else {
+		if (packet->payload_packet_len != 8 || ndpi_current_pkt_from_server_to_client(packet, flow)) {
+			NDPI_EXCLUDE_PROTO(ndpi_struct, flow);
+			return;
+		}
+		
+		if (flow->packet_direction_counter[packet->packet_direction] == 2) {
+			if (memcmp(flow->l4.udp.rocket_league_octets, packet->payload, 8) == 0) {
+				return;
+			}
+		}
+
+		if (flow->packet_direction_counter[packet->packet_direction] < 6) {
+			return;
+		}
+
 		ndpi_set_detected_protocol(ndpi_struct, flow, NDPI_PROTOCOL_ROCKET_LEAGUE, NDPI_PROTOCOL_UNKNOWN, NDPI_CONFIDENCE_DPI);
 	}
 }

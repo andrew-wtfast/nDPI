@@ -897,7 +897,7 @@ static void ndpi_process_packet(uint8_t * const args, struct pcap_pkthdr const *
 		// Save the ethernet addresses of the first packet of the flow.
 		// If the first packet isn't mid-flow then hopefully this will accurately
 		// tell us the mac address of the client ie: the hw addr associated with an 
-		// rfc1918 ip address.
+		// rfc1918 ip address --ap.
 		if (ethernet != NULL) {
 			memcpy(&flow_to_process->ethernet, ethernet, sizeof(struct ndpi_ethhdr));
 		}
@@ -1101,6 +1101,7 @@ static void *processing_thread(void *const ndpi_thread_arg)
 
 	LOG_PRINTF(LOG_DBG, "Starting Thread %d\n", reader_thread->array_index);
 	run_pcap_loop(reader_thread);
+	printf("after pcap_loop Thread %d\n", reader_thread->array_index);
 	__sync_fetch_and_add(&reader_thread->workflow->error_or_eof, 1);
 	return NULL;
 }
