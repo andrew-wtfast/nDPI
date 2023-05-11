@@ -67,6 +67,10 @@
 #define ETH_P_IP 0x0800
 #endif
 
+#ifndef ETH_P_VLAN
+#define ETH_P_VLAN 0x8100
+#endif
+
 #ifndef ETH_P_IPV6
 #define ETH_P_IPV6 0x86DD
 #endif
@@ -653,6 +657,8 @@ static void ndpi_process_packet(uint8_t * const args, struct pcap_pkthdr const *
 	uint16_t type;
 	uint32_t thread_index = INITIAL_THREAD_HASH;	// generated with `dd if=/dev/random bs=1024 count=1 |& hd'
 
+	uint8_t recheck_type;
+
 	if (reader_thread == NULL) {
 		return;
 	}
@@ -685,7 +691,12 @@ static void ndpi_process_packet(uint8_t * const args, struct pcap_pkthdr const *
 		}
 		ethernet = (struct ndpi_ethhdr *)&packet[eth_offset];
 		ip_offset = sizeof(struct ndpi_ethhdr) + eth_offset;
+		
 		type = ntohs(ethernet->h_proto);
+
+ether_recheck_type:
+		recheck_type = 0;
+
 		switch (type) {
 		case ETH_P_IP:			/* IPv4 */
 			if (header->len < sizeof(struct ndpi_ethhdr) + sizeof(struct ndpi_iphdr)) {
@@ -701,11 +712,43 @@ static void ndpi_process_packet(uint8_t * const args, struct pcap_pkthdr const *
 			break;
 		case ETH_P_ARP:		/* ARP */
 			return;
+		case ETH_P_VLAN:
+			// WTFast hold my beer...
+			if (ip_offset + 4 >= (int)header->caplen) {
+				fprintf(stderr, "[%8llu, %d] VLAN packet too short - skipping\n", workflow->packets_captured, reader_thread->array_index);
+				return;
+			}
+			LOG_PRINTF(LOG_DBG, "[%8llu, %d] VLAN tagged packet vlan id = 0x%04x\n", workflow->packets_captured, reader_thread->array_index, ((packet[ip_offset] << 8) + packet[ip_offset+1]) & 0xFFF);
+			type = (packet[ip_offset+2] << 8) + packet[ip_offset+3];
+			ip_offset += 4;
+
+			// Double tagged
+			if (type == 0x8100) {
+				if (ip_offset + 4 >= (int)header->caplen) {
+					fprintf(stderr, "[%8llu, %d] Double tagged VLAN packet too short - skipping\n", workflow->packets_captured, reader_thread->array_index);
+					return;
+				}
+				LOG_PRINTF(LOG_DBG, "[%8llu, %d] Double tagged VLAN packet vlan id = 0x%04x\n", workflow->packets_captured, reader_thread->array_index, ((packet[ip_offset] << 8) + packet[ip_offset+1]) & 0xFFF);
+				type = (packet[ip_offset+2] << 8) + packet[ip_offset+3];
+				ip_offset += 4;
+			}
+
+			recheck_type = 1;
+
+			break;
+
 		default:
 			fprintf(stderr, "[%8llu, %d] Unknown Ethernet packet with type 0x%X - skipping\n", workflow->packets_captured, reader_thread->array_index, type);
 			return;
 		}
+
+		// This is hideous but effective. The approach is copied from the
+		// ndpiReader sample app.
+		if (recheck_type)
+			goto ether_recheck_type;
+
 		break;
+
 	default:
 		fprintf(stderr, "[%8llu, %d] Captured non IP/Ethernet packet with datalink type 0x%X - skipping\n", workflow->packets_captured, reader_thread->array_index, pcap_datalink(workflow->pcap_handle));
 		return;
@@ -1101,7 +1144,6 @@ static void *processing_thread(void *const ndpi_thread_arg)
 
 	LOG_PRINTF(LOG_DBG, "Starting Thread %d\n", reader_thread->array_index);
 	run_pcap_loop(reader_thread);
-	printf("after pcap_loop Thread %d\n", reader_thread->array_index);
 	__sync_fetch_and_add(&reader_thread->workflow->error_or_eof, 1);
 	return NULL;
 }
