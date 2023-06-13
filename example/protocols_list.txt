@@ -248,3 +248,4 @@ Tailscale
 COD
 MortalKombat
 RocketLeague
+WorldOfTanks
